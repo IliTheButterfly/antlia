@@ -120,15 +120,19 @@ static bool antlia_scan_input_callback(InputEvent* event, void* context) {
 // worker thread: typing blocks for as long as the string takes, and the GUI
 // thread must not be the one waiting.
 static void type_current(Antlia* app) {
-    char text[NDEF_URI_MAX];
     with_view_model(
         app->scan_view,
         AntliaScanModel * model,
-        { strlcpy(text, output_text(model, app->config.output), sizeof(text)); },
+        {
+            strlcpy(
+                app->type_buffer,
+                output_text(model, app->config.output),
+                sizeof(app->type_buffer));
+        },
         false);
 
-    bool typed =
-        antlia_hid_type(&app->hid, text, app->config.terminator, app->config.key_delay_ms);
+    bool typed = antlia_hid_type(
+        &app->hid, app->type_buffer, app->config.terminator, app->config.key_delay_ms);
 
     with_view_model(
         app->scan_view,
@@ -142,7 +146,16 @@ static void type_current(Antlia* app) {
     notification_message(app->notifications, typed ? &sequence_success : &sequence_error);
 }
 
-static void set_unknown_tag(Antlia* app, const char* reason, const uint8_t* uid, size_t uid_size) {
+// Report a tag that carries no usable ID. `already_reported` suppresses the
+// notification for a tag that is simply still sitting on the reader: at one poll
+// every 120 ms, re-firing the error buzzer and LED would be eight alerts a second
+// for as long as the tag is there.
+static void set_unknown_tag(
+    Antlia* app,
+    const char* reason,
+    const uint8_t* uid,
+    size_t uid_size,
+    bool already_reported) {
     with_view_model(
         app->scan_view,
         AntliaScanModel * model,
@@ -159,7 +172,7 @@ static void set_unknown_tag(Antlia* app, const char* reason, const uint8_t* uid,
             }
         },
         true);
-    notification_message(app->notifications, &sequence_error);
+    if(!already_reported) notification_message(app->notifications, &sequence_error);
 }
 
 static int32_t antlia_scan_worker(void* context) {
@@ -171,6 +184,8 @@ static int32_t antlia_scan_worker(void* context) {
     // when the tag leaves, so re-tapping the same tag deliberately types again
     // while holding it still does not.
     char last_handled[SHORTID_SIZE] = {0};
+    // The UID of the unreadable tag currently on the reader, for the same reason.
+    char last_unknown[ANTLIA_UID_TEXT_SIZE] = {0};
 
     while(app->worker_running) {
         if(app->type_requested) {
@@ -186,6 +201,7 @@ static int32_t antlia_scan_worker(void* context) {
             // there is nothing useful to replace it with, and blanking it the
             // instant the tag lifts makes the ID unreadable to a human.
             last_handled[0] = '\0';
+            last_unknown[0] = '\0';
             bool ready = antlia_hid_ready(&app->hid);
             with_view_model(
                 app->scan_view, AntliaScanModel * model, { model->hid_ready = ready; }, true);
@@ -195,9 +211,13 @@ static int32_t antlia_scan_worker(void* context) {
 
         size_t uid_size = 0;
         const uint8_t* uid = mf_ultralight_get_uid(data, &uid_size);
+        char uid_text[ANTLIA_UID_TEXT_SIZE];
+        uid_to_text(uid, uid_size, uid_text, sizeof(uid_text));
+        bool same_unknown_tag = strcmp(uid_text, last_unknown) == 0;
+        strlcpy(last_unknown, uid_text, sizeof(last_unknown));
 
         if(data->pages_read <= USER_MEMORY_FIRST_PAGE) {
-            set_unknown_tag(app, "no user memory read", uid, uid_size);
+            set_unknown_tag(app, "no user memory read", uid, uid_size, same_unknown_tag);
             furi_delay_ms(POLL_INTERVAL_MS);
             continue;
         }
@@ -210,7 +230,7 @@ static int32_t antlia_scan_worker(void* context) {
 
         char uri[NDEF_URI_MAX];
         if(!ndef_find_uri(memory, memory_size, uri, sizeof(uri))) {
-            set_unknown_tag(app, "no NDEF URI record", uid, uid_size);
+            set_unknown_tag(app, "no NDEF URI record", uid, uid_size, same_unknown_tag);
             furi_delay_ms(POLL_INTERVAL_MS);
             continue;
         }
@@ -220,7 +240,7 @@ static int32_t antlia_scan_worker(void* context) {
             // The URI is well formed but is not an Almagest `/s/{short_id}`, or
             // its check symbol does not match. Either way it must not be typed:
             // a wrong-but-plausible ID is worse than no ID.
-            set_unknown_tag(app, "URL carries no valid ID", uid, uid_size);
+            set_unknown_tag(app, "URL carries no valid ID", uid, uid_size, same_unknown_tag);
             furi_delay_ms(POLL_INTERVAL_MS);
             continue;
         }
@@ -231,6 +251,7 @@ static int32_t antlia_scan_worker(void* context) {
             continue;
         }
         strlcpy(last_handled, short_id, sizeof(last_handled));
+        last_unknown[0] = '\0';
 
         with_view_model(
             app->scan_view,
@@ -283,7 +304,7 @@ static void antlia_scan_enter_callback(void* context) {
 
     app->type_requested = false;
     app->worker_running = true;
-    app->worker = furi_thread_alloc_ex("AntliaWorker", 2048, antlia_scan_worker, app);
+    app->worker = furi_thread_alloc_ex("AntliaWorker", 4096, antlia_scan_worker, app);
     furi_thread_start(app->worker);
 }
 

@@ -86,6 +86,11 @@ plus one cosmetic hyphen, so the exposure is small — but if the hyphen lands
 wrong, switch **Types** to `4K7T92M8`, which contains nothing but digits and
 letters.
 
+**Only NTAG / MIFARE Ultralight tags are read.** That is what Almagest specifies
+(NTAG213), and it is what NDEF is native to. A MIFARE Classic tag reads as *no tag
+at all* rather than as a rejected one — worth knowing if you are holding one and
+wondering why nothing happens.
+
 Also: claiming the USB HID interface replaces the serial one, so the Flipper's
 CLI and qFlipper cannot talk to it *while the scan view is open*. Backing out to
 the menu restores serial. The claim is deliberately scoped to the scan session

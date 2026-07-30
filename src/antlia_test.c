@@ -81,7 +81,7 @@ static void antlia_test_enter_callback(void* context) {
     antlia_hid_claim(&app->hid);
     // On its own thread: typing blocks for as long as the string takes, and a
     // frozen screen during it would look like a crash.
-    app->test_worker = furi_thread_alloc_ex("AntliaTest", 1024, antlia_test_worker, app);
+    app->test_worker = furi_thread_alloc_ex("AntliaTest", 2048, antlia_test_worker, app);
     furi_thread_start(app->test_worker);
 }
 

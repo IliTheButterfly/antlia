@@ -83,6 +83,11 @@ typedef struct {
     // Set by the OK key, consumed by the worker. Typing blocks for as long as
     // the string takes, so the GUI thread must not be the one doing it.
     volatile bool type_requested;
+    // Scratch for the string being typed. Owned by the app rather than the
+    // worker's stack: a URI can be 512 bytes and the worker also holds one while
+    // parsing, which together do not fit comfortably in a thread stack.
+    // Touched only by the worker.
+    char type_buffer[NDEF_URI_MAX];
 } Antlia;
 
 // Scan view lifecycle. The view owns the worker: entering it claims USB HID and
