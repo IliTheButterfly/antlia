@@ -58,7 +58,7 @@ because a FAP built against a mismatched SDK loads and then dies on a missing
 symbol. If you run official firmware, drop the `--index-url` from the `sdk`
 target; the app uses no Momentum-specific API.
 
-## Two limitations worth knowing before you file a bug
+## Limitations worth knowing before you file a bug
 
 **USB only. Bluetooth HID is not possible from an app outside the firmware.**
 This is not a design choice — it is the SDK's exported symbol table. In

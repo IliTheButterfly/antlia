@@ -165,7 +165,10 @@ def main() -> None:
     for url in uri_cases(valid):
         lines.append(f"    {{{c_string(url)}, {c_optional_string(parse_ndef_url(url))}}},")
 
-    lines += ["};", ""]
+    # No trailing blank line: clang-format strips one, and `ufbt format` runs over
+    # this directory — so emitting one would make the generated file differ from a
+    # freshly generated one the moment anybody formatted the tree.
+    lines.append("};")
     print("\n".join(lines))
 
 
