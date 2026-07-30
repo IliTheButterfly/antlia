@@ -1,0 +1,20 @@
+App(
+    appid="antlia",
+    name="Antlia",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="antlia_app",
+    requires=["gui", "storage", "notification"],
+    stack_size=4 * 1024,
+    fap_category="NFC",
+    fap_icon="images/antlia_10px.png",
+    fap_icon_assets="images",
+    fap_author="IliTheButterfly",
+    fap_version="1.0",
+    fap_description=(
+        "Reads an Almagest NFC container tag and types its short ID into the "
+        "connected computer as a USB keyboard."
+    ),
+    # Listed explicitly rather than globbed: the default `*.c*` pattern would
+    # also pull in tests/test_lib.c, which has its own main().
+    sources=["src/*.c", "src/lib/*.c"],
+)

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    # The codec and the NDEF parser are standard-library-only C, so the tests
+    # that matter most run without a Flipper, an SDK, or a cross-compiler.
+    name: Host unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: make test
+
+  vectors-match-idcodec:
+    # tests/vectors.h is generated from Almagest's Python idcodec. Regenerating it
+    # here and diffing is what catches the C port drifting away from the Python
+    # implementation it must agree with symbol for symbol.
+    name: Vectors still match idcodec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: IliTheButterfly/almagest
+          path: almagest
+      - uses: actions/checkout@v4
+        with:
+          path: antlia
+      - uses: astral-sh/setup-uv@v5
+      - name: Regenerate and diff
+        working-directory: almagest/idcodec
+        run: |
+          uv run python ../../antlia/tools/gen_vectors.py > /tmp/vectors.h
+          diff -u ../../antlia/tests/vectors.h /tmp/vectors.h
+
+  firmware-build:
+    name: Build antlia.fap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ufbt
+        run: pip install ufbt
+      - name: Fetch the Momentum SDK
+        # Momentum, not official: a FAP built against a mismatched SDK loads and
+        # then dies on a missing symbol.
+        run: make sdk
+      - name: Build
+        run: make build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: antlia.fap
+          path: dist/antlia.fap
