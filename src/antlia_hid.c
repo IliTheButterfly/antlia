@@ -10,6 +10,9 @@
 #define ENUMERATION_TIMEOUT_MS 2000
 #define ENUMERATION_POLL_MS    50
 
+// Settle time after enumeration, before the first key report.
+#define FIRST_REPORT_SETTLE_MS 150
+
 void antlia_hid_init(AntliaHid* hid) {
     hid->previous = NULL;
     hid->claimed = false;
@@ -75,10 +78,22 @@ bool antlia_hid_type(
         furi_delay_ms(ENUMERATION_POLL_MS);
         waited += ENUMERATION_POLL_MS;
     }
+
+    // Deliberately *not* a hard gate. `furi_hal_hid_is_connected()` is documented
+    // only as "connection state", and refusing to type on it means a host that
+    // has enumerated the keyboard perfectly well but does not set whatever that
+    // flag tracks gets silence and a "No USB host" screen it cannot act on.
+    // `furi_hal_hid_kb_press` reports whether the report was actually sent, so
+    // that is the honest gate; the wait above is just there to avoid racing
+    // enumeration.
     if(!furi_hal_hid_is_connected()) {
-        FURI_LOG_W(TAG, "host is not accepting keystrokes");
-        return false;
+        FURI_LOG_W(TAG, "host not reported as connected after %lu ms; trying anyway", waited);
     }
+
+    // A host that has just enumerated an interface frequently drops the very
+    // first report. Settling briefly costs nothing a human notices and is the
+    // difference between the first scan of a session working and vanishing.
+    furi_delay_ms(FIRST_REPORT_SETTLE_MS);
 
     for(const char* cursor = text; *cursor != '\0'; cursor++) {
         uint16_t keycode = keycode_for(*cursor);
