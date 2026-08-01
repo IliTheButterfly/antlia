@@ -126,11 +126,56 @@ trusting them: exhaustively, that **no single-symbol change** and **no adjacent
 transposition** of the data symbols leaves the check value unchanged. Those are
 precisely the two mistakes humans make copying a code by eye.
 
-Deliberately not implemented: writing tags. Provisioning a tag is a bulk
-operation with a database behind it, and Almagest does it from the phone PWA
-where the object being labelled is already on screen. A tag written by a device
-that cannot check the ID against the inventory is a tag that might be a
-duplicate.
+## Two modes, and only one of them touches HID
+
+**Wedge mode** is everything described above: you open the app, it claims USB
+HID, and it types.
+
+**Bridge mode** is entered only when Almagest's device bridge launches the app
+over the Flipper's RPC with the argument `RPC` (see Almagest's ADR 0013). The
+host asks for reads and writes over a small text protocol and gets both carriers
+back — the UID *and* the URI exactly as the tag holds them, rather than the short
+ID the wedge types.
+
+The two are disjoint at the entry point: `antlia_app` returns into
+`antlia_rpc_run` before the view dispatcher or `AntliaHid` is ever constructed.
+
+**Bridge mode must never claim USB HID**, and this is not a preference. The HID
+claim *replaces* the CDC interface — it is already why the wedge scopes its claim
+to the scan view, and already why claiming it strands the Flipper's CLI until
+someone presses a button. Under RPC the CDC interface **is the session giving
+the orders**, so claiming HID would sever the connection mid-command. It costs
+nothing to forgo, because HID exists to reach a computer that has no other
+channel, and in bridge mode there is one.
+
+### Writing tags
+
+Wedge mode still cannot write, and the original reasoning stands: *a tag written
+by a device that cannot check the ID against the inventory is a tag that might be
+a duplicate.* That objection is about a Flipper acting alone.
+
+In bridge mode the Flipper is a peripheral of a host that **is** talking to the
+inventory and which minted the short ID being written, so it does not apply.
+`src/lib/ndef_encode.c` builds the payload and `mf_ultralight_poller_sync_write_page`
+puts it down, refusing — before a single page is written — a tag that is not
+blank, a payload that will not fit, or a URI that is not one. Every write is
+read back through the same reader before it is reported, because a write that
+attests to its own success is exactly what Almagest's ADR 0012 refuses.
+
+`tests/vectors.h` now carries the encoder's half too: the exact user-memory image
+Almagest's Python encoder produces for the same URI. The two must match **byte
+for byte**, which is a nastier kind of drift than the codec's — both sides would
+read their own output happily, and nothing would notice until a phone and a
+Flipper disagreed about a drawer.
+
+### Not yet run against a Flipper
+
+Bridge mode compiles clean against Momentum `mntm-012` / API 87.1 with `-Werror`,
+and the encoder is tested on a host. Nothing has executed on a device. The first
+thing to check if it does not start: the app receives its `RpcAppSystem*`
+formatted into the launch argument (`RPC <pointer>`), because `rpc_app.h` exports
+no way to fetch it and the loader passes only a string — that convention is the
+one part of this that could not be verified against the SDK headers.
 
 ## Name
 
