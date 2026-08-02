@@ -18,9 +18,11 @@ jobs:
         run: make test
 
   vectors-match-idcodec:
-    # tests/vectors.h is generated from Almagest's Python idcodec. Regenerating it
-    # here and diffing is what catches the C port drifting away from the Python
-    # implementation it must agree with symbol for symbol.
+    # tests/vectors.h is generated from Almagest's Python implementations.
+    # Regenerating it here and diffing is what catches the C port drifting away
+    # from them — the short-ID codec it must agree with symbol for symbol, and
+    # since ADR 0014 the NDEF encoder it must agree with **byte for byte**,
+    # because Antlia can now write a tag and a phone has to be able to read it.
     name: Vectors still match idcodec
     runs-on: ubuntu-latest
     steps:
@@ -31,12 +33,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: antlia
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Regenerate and diff
-        working-directory: almagest/idcodec
+        # **No venv, and no `uv`.** The generator imports exactly two modules —
+        # `idcodec` (zero dependencies by design, and a test enforces it) and
+        # `agent.ndef` (standard library only) — so a PYTHONPATH is the whole
+        # setup.
+        #
+        # Building the deviceagent's environment instead would drag in
+        # `almagest-backend`, which is a test-only path dependency of it, which
+        # needs Almagest's own submodules checked out. That is a lot of machinery
+        # for two pure-Python files, and it fails in a way that has nothing to do
+        # with whether the vectors match.
         run: |
-          uv run python ../../antlia/tools/gen_vectors.py > /tmp/vectors.h
-          diff -u ../../antlia/tests/vectors.h /tmp/vectors.h
+          PYTHONPATH=almagest/idcodec:almagest/deviceagent \
+            python antlia/tools/gen_vectors.py > /tmp/vectors.h
+          diff -u antlia/tests/vectors.h /tmp/vectors.h
 
   firmware-build:
     name: Build antlia.fap

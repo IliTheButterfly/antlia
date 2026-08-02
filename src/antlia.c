@@ -1,6 +1,7 @@
 // Antlia — entry point, view wiring, settings and about.
 
 #include "antlia_i.h"
+#include "antlia_rpc.h"
 
 #include <dolphin/dolphin.h>
 
@@ -191,7 +192,19 @@ static void antlia_free(Antlia* app) {
 }
 
 int32_t antlia_app(void* p) {
-    UNUSED(p);
+    // **Bridge mode returns before anything else is allocated**, and that is the
+    // point. The wedge's whole apparatus — the view dispatcher, the scan view,
+    // and above all `AntliaHid` — is never constructed under RPC, so there is no
+    // path by which a host-driven session could claim USB HID and sever the CDC
+    // interface it is being driven over. Making the two modes disjoint at the
+    // entry point is cheaper to keep true than a flag checked in five places.
+    //
+    // See `antlia_rpc.h` and ADR 0014.
+    const char* args = p;
+    if(antlia_rpc_wanted(args)) {
+        return antlia_rpc_run(args);
+    }
+
     Antlia* app = antlia_alloc();
 
     dolphin_deed(DolphinDeedNfcRead);

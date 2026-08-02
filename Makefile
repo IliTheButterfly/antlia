@@ -15,7 +15,7 @@ SDK_INDEX ?= https://up.momentum-fw.dev/firmware/directory.json
 SDK_CHANNEL ?= release
 
 BUILD := build
-SOURCES := src/lib/shortid.c src/lib/ndef.c tests/test_lib.c
+SOURCES := src/lib/shortid.c src/lib/ndef.c src/lib/ndef_encode.c tests/test_lib.c
 
 .PHONY: all test clean sdk build launch install cli lint format check
 
@@ -25,7 +25,7 @@ all: test
 test: $(BUILD)/test_lib
 	$(BUILD)/test_lib
 
-$(BUILD)/test_lib: $(SOURCES) src/lib/shortid.h src/lib/ndef.h tests/vectors.h
+$(BUILD)/test_lib: $(SOURCES) src/lib/shortid.h src/lib/ndef.h src/lib/ndef_encode.h tests/vectors.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(SOURCES)
 
@@ -60,9 +60,9 @@ format:
 lint:
 	$(UFBT) lint
 
-## vectors: regenerate tests/vectors.h from Almagest's Python idcodec
+## vectors: regenerate tests/vectors.h from Almagest's Python idcodec + agent.ndef
 vectors:
-	cd ../idcodec && uv run python ../antlia/tools/gen_vectors.py > ../antlia/tests/vectors.h
+	cd ../deviceagent && uv run --no-dev python ../antlia/tools/gen_vectors.py > ../antlia/tests/vectors.h
 
 clean:
 	rm -rf $(BUILD)

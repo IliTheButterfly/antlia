@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "../src/lib/ndef.h"
+#include "../src/lib/ndef_encode.h"
 #include "../src/lib/shortid.h"
 #include "vectors.h"
 
@@ -265,6 +266,97 @@ static void test_ndef_memory_skips_leading_null_tlvs(void) {
     CHECK(ndef_short_id_from_memory(memory, sizeof(memory), short_id), "not found past padding");
 }
 
+// ---------------------------------------------------------------------------
+// The encoder — ADR 0014. Antlia can write a tag in bridge mode, so these bytes
+// must be the same bytes `deviceagent/agent/ndef.py` writes.
+// ---------------------------------------------------------------------------
+
+static void test_encode_vectors_match_the_python_encoder(void) {
+    size_t count = sizeof(ndef_encode_vectors) / sizeof(ndef_encode_vectors[0]);
+    printf("ndef encode vectors: %zu cases\n", count);
+
+    for(size_t i = 0; i < count; i++) {
+        const NdefEncodeVector* vector = &ndef_encode_vectors[i];
+        uint8_t out[NDEF_ENCODE_MAX];
+        size_t written = 0;
+
+        CHECK(
+            ndef_build_uri_image(vector->uri, out, sizeof(out), &written),
+            "encoder refused a URI the Python encoder accepted");
+        CHECK(written == vector->size, "image length differs from the Python encoder");
+        CHECK(
+            memcmp(out, vector->image, vector->size) == 0,
+            "image bytes differ from the Python encoder");
+
+        size_t pages = 0;
+        CHECK(
+            ndef_uri_page_count(vector->uri, NDEF_NTAG213_USER_PAGES, &pages), "page count");
+        CHECK(pages == vector->pages, "page count differs from the Python encoder");
+    }
+}
+
+static void test_encode_round_trips_through_this_app_s_own_decoder(void) {
+    printf("ndef encode round trip through ndef_short_id_from_memory\n");
+    // Not redundant with the vectors above: those prove Antlia agrees with the
+    // *other* implementation. This proves it agrees with itself — that a tag
+    // Antlia writes is one Antlia can read, which is what the read-back after a
+    // write actually asks.
+    size_t count = sizeof(ndef_encode_vectors) / sizeof(ndef_encode_vectors[0]);
+    for(size_t i = 0; i < count; i++) {
+        const char* uri = ndef_encode_vectors[i].uri;
+        uint8_t memory[NDEF_ENCODE_MAX];
+        size_t written = 0;
+        CHECK(ndef_build_uri_image(uri, memory, sizeof(memory), &written), "build");
+
+        char read_back[NDEF_URI_MAX];
+        CHECK(ndef_find_uri(memory, written, read_back, sizeof(read_back)), "not found");
+        CHECK(strcmp(read_back, uri) == 0, "round trip changed the URI");
+    }
+}
+
+static void test_encode_refuses_rather_than_truncating(void) {
+    printf("ndef encode refusals\n");
+    uint8_t out[NDEF_ENCODE_MAX];
+    size_t written = 0;
+
+    CHECK(!ndef_build_uri_image("", out, sizeof(out), &written), "empty URI");
+    CHECK(!ndef_build_uri_image(NULL, out, sizeof(out), &written), "NULL URI");
+
+    // A control byte means the caller is about to write something that is not a
+    // URI, and the tag would read back as garbage this app's own decoder
+    // refuses. Better to fail where the cause is still attached.
+    CHECK(!ndef_build_uri_image("https://x/\n", out, sizeof(out), &written), "control byte");
+
+    // A buffer too small must not produce a partial image.
+    uint8_t tiny[8];
+    CHECK(
+        !ndef_build_uri_image(
+            "https://almagest.lan/s/JSK3G03N", tiny, sizeof(tiny), &written),
+        "small buffer");
+
+    // **The important one.** A Type 2 Tag write has no transaction, so running
+    // off the end of the tag leaves the earlier pages committed. Refusing on the
+    // page count, before a byte is written, is what keeps a too-long payload
+    // from producing a half-written tag.
+    size_t pages = 0;
+    CHECK(
+        !ndef_uri_page_count("https://almagest.lan/s/JSK3G03N", 4, &pages),
+        "a payload that does not fit must be refused");
+}
+
+static void test_encode_prefers_the_longest_abbreviation(void) {
+    printf("ndef encode longest-match abbreviation\n");
+    // `https://www.x` matches both `https://` (0x04) and `https://www.` (0x02).
+    // Picking the shorter one still decodes correctly, which is exactly why it
+    // would go unnoticed — and would not be the bytes the Python encoder wrote.
+    uint8_t out[NDEF_ENCODE_MAX];
+    size_t written = 0;
+    CHECK(
+        ndef_build_uri_image("https://www.almagest.lan/s/JSK3G03N", out, sizeof(out), &written),
+        "build");
+    CHECK(out[6] == 0x02, "expected the https://www. identifier code");
+}
+
 int main(void) {
     test_shortid_vectors();
     test_shortid_error_reasons();
@@ -276,6 +368,10 @@ int main(void) {
     test_ndef_memory_prefix_codes();
     test_ndef_memory_rejects();
     test_ndef_memory_skips_leading_null_tlvs();
+    test_encode_vectors_match_the_python_encoder();
+    test_encode_round_trips_through_this_app_s_own_decoder();
+    test_encode_refuses_rather_than_truncating();
+    test_encode_prefers_the_longest_abbreviation();
 
     printf("\n%d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;

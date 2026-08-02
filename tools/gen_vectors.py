@@ -7,17 +7,27 @@ and not the other, and a wrong ID gets typed into an inventory system. So the
 expectations are not written by hand here; every case is run through the real
 Python implementation and asserted before it is emitted.
 
-Run from the `idcodec` directory so its package is importable:
+Since ADR 0014 it also covers the *encoder*: Antlia can write a tag in bridge
+mode, so `src/lib/ndef_encode.c` and `deviceagent/agent/ndef.py` are two
+implementations that must emit **byte-identical** user memory for the same URI.
+That is a nastier drift than the codec's, because both sides would still read
+their own output happily — the tag would simply be one the other half of the
+system writes differently, and nothing would notice until a phone and a Flipper
+disagreed about a drawer.
+
+Run from the `deviceagent` directory, whose venv has both `idcodec` (a path
+dependency) and `agent`:
 
     make vectors
 
-which is `cd ../idcodec && uv run python ../antlia/tools/gen_vectors.py`.
+which is `cd ../deviceagent && uv run --no-dev python ../antlia/tools/gen_vectors.py`.
 """
 
 from __future__ import annotations
 
 import random
 
+from agent import ndef
 from idcodec.shortid import ALPHABET, InvalidShortId, generate, validate
 from idcodec.tagpayload import parse_ndef_url
 
@@ -118,6 +128,30 @@ def uri_cases(valid: list[str]) -> list[str]:
     return urls
 
 
+#: URIs whose encoded image both implementations must agree on, byte for byte.
+#: `https://almagest.lan/...` is the real one (ADR 0001); the rest exercise the
+#: abbreviation table, including the longest-match case that a naive encoder gets
+#: wrong — `https://www.` and `https://` both match, and picking the shorter
+#: produces a record that still *decodes* correctly and is not the same bytes.
+def encode_cases(valid: list[str]) -> list[str]:
+    cases = [f"https://almagest.lan/s/{code}" for code in valid[:12]]
+    cases += [
+        f"https://www.almagest.lan/s/{valid[0]}",
+        f"http://almagest.lan/s/{valid[1]}",
+        f"http://www.almagest.lan/s/{valid[2]}",
+        # No abbreviation applies, so the identifier code is 0x00 and the whole
+        # URI travels verbatim.
+        f"almagest://s/{valid[3]}",
+        # A long host, to push the image over one page boundary and then another.
+        f"https://almagest.internal.example.invalid/s/{valid[4]}",
+    ]
+    return cases
+
+
+def c_bytes(payload: bytes) -> str:
+    return "{" + ", ".join(f"0x{byte:02X}" for byte in payload) + "}"
+
+
 def main() -> None:
     rng = random.Random(SEED)
     valid = [generate(rng.getrandbits) for _ in range(VALID_COUNT)]
@@ -165,11 +199,50 @@ def main() -> None:
     for url in uri_cases(valid):
         lines.append(f"    {{{c_string(url)}, {c_optional_string(parse_ndef_url(url))}}},")
 
+    lines += [
+        "};",
+        "",
+        "// The encoder's half: the exact user-memory image `agent/ndef.py` produces,",
+        "// padded to a page boundary. `src/lib/ndef_encode.c` must match byte for byte.",
+        "typedef struct {",
+        "    const char* uri;",
+        "    unsigned char image[128];",
+        "    unsigned size;",
+        "    unsigned pages;",
+        "} NdefEncodeVector;",
+        "",
+        "static const NdefEncodeVector ndef_encode_vectors[] = {",
+    ]
+
+    for uri in encode_cases(valid):
+        pages = ndef.pages_for_uri(uri)
+        image = b"".join(pages)
+        assert len(image) % ndef.PAGE_SIZE == 0, uri
+        # Round-tripped through the real parser before it is emitted, so a
+        # vector can never bless an image that Almagest itself cannot read.
+        assert ndef.parse_uri_record(ndef.collect_ndef_bytes(_pager(pages))) == uri, uri
+        assert len(image) <= 128, f"{uri} needs a bigger vector buffer"
+        lines.append(
+            f"    {{{c_string(uri)}, {c_bytes(image)}, {len(image)}, {len(pages)}}},"
+        )
+
     # No trailing blank line: clang-format strips one, and `ufbt format` runs over
     # this directory — so emitting one would make the generated file differ from a
     # freshly generated one the moment anybody formatted the tree.
     lines.append("};")
     print("\n".join(lines))
+
+
+def _pager(pages: list[bytes]):
+    """`collect_ndef_bytes`'s `read_page`, over the pages just built."""
+
+    def read_page(page: int) -> bytes | None:
+        index = page - ndef.FIRST_USER_PAGE
+        if index < 0 or index >= len(pages):
+            return None
+        return pages[index]
+
+    return read_page
 
 
 if __name__ == "__main__":
