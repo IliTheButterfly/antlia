@@ -62,7 +62,7 @@ lint:
 
 ## vectors: regenerate tests/vectors.h from Almagest's Python idcodec + agent.ndef
 vectors:
-	cd ../deviceagent && uv run python ../antlia/tools/gen_vectors.py > ../antlia/tests/vectors.h
+	cd ../deviceagent && uv run --no-dev python ../antlia/tools/gen_vectors.py > ../antlia/tests/vectors.h
 
 clean:
 	rm -rf $(BUILD)

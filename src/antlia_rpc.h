@@ -23,7 +23,7 @@
 // a write instead of nothing.
 //
 // The grammar is defined in one place, `deviceagent/agent/flipper/antlia.py`,
-// and this file is a transcription of it. See ADR 0013.
+// and this file is a transcription of it. See ADR 0014.
 
 #pragma once
 

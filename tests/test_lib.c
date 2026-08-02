@@ -267,7 +267,7 @@ static void test_ndef_memory_skips_leading_null_tlvs(void) {
 }
 
 // ---------------------------------------------------------------------------
-// The encoder — ADR 0013. Antlia can write a tag in bridge mode, so these bytes
+// The encoder — ADR 0014. Antlia can write a tag in bridge mode, so these bytes
 // must be the same bytes `deviceagent/agent/ndef.py` writes.
 // ---------------------------------------------------------------------------
 

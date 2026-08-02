@@ -18,9 +18,11 @@ jobs:
         run: make test
 
   vectors-match-idcodec:
-    # tests/vectors.h is generated from Almagest's Python idcodec. Regenerating it
-    # here and diffing is what catches the C port drifting away from the Python
-    # implementation it must agree with symbol for symbol.
+    # tests/vectors.h is generated from Almagest's Python implementations.
+    # Regenerating it here and diffing is what catches the C port drifting away
+    # from them — the short-ID codec it must agree with symbol for symbol, and
+    # since ADR 0014 the NDEF encoder it must agree with **byte for byte**,
+    # because Antlia can now write a tag and a phone has to be able to read it.
     name: Vectors still match idcodec
     runs-on: ubuntu-latest
     steps:
@@ -33,9 +35,13 @@ jobs:
           path: antlia
       - uses: astral-sh/setup-uv@v5
       - name: Regenerate and diff
-        working-directory: almagest/idcodec
+        # From `deviceagent`, not `idcodec`: the generator needs both `idcodec`
+        # (a path dependency there) and `agent.ndef` for the encoder vectors.
+        # `--no-dev` keeps the backend — fastapi, sqlalchemy, alembic — out of a
+        # job that only imports two pure-Python modules.
+        working-directory: almagest/deviceagent
         run: |
-          uv run python ../../antlia/tools/gen_vectors.py > /tmp/vectors.h
+          uv run --no-dev python ../../antlia/tools/gen_vectors.py > /tmp/vectors.h
           diff -u ../../antlia/tests/vectors.h /tmp/vectors.h
 
   firmware-build:

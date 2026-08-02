@@ -132,7 +132,7 @@ precisely the two mistakes humans make copying a code by eye.
 HID, and it types.
 
 **Bridge mode** is entered only when Almagest's device bridge launches the app
-over the Flipper's RPC with the argument `RPC` (see Almagest's ADR 0013). The
+over the Flipper's RPC with the argument `RPC` (see Almagest's ADR 0014). The
 host asks for reads and writes over a small text protocol and gets both carriers
 back — the UID *and* the URI exactly as the tag holds them, rather than the short
 ID the wedge types.

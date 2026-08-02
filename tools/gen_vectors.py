@@ -7,7 +7,7 @@ and not the other, and a wrong ID gets typed into an inventory system. So the
 expectations are not written by hand here; every case is run through the real
 Python implementation and asserted before it is emitted.
 
-Since ADR 0013 it also covers the *encoder*: Antlia can write a tag in bridge
+Since ADR 0014 it also covers the *encoder*: Antlia can write a tag in bridge
 mode, so `src/lib/ndef_encode.c` and `deviceagent/agent/ndef.py` are two
 implementations that must emit **byte-identical** user memory for the same URI.
 That is a nastier drift than the codec's, because both sides would still read
@@ -20,7 +20,7 @@ dependency) and `agent`:
 
     make vectors
 
-which is `cd ../deviceagent && uv run python ../antlia/tools/gen_vectors.py`.
+which is `cd ../deviceagent && uv run --no-dev python ../antlia/tools/gen_vectors.py`.
 """
 
 from __future__ import annotations

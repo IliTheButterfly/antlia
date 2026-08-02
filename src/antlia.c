@@ -199,7 +199,7 @@ int32_t antlia_app(void* p) {
     // interface it is being driven over. Making the two modes disjoint at the
     // entry point is cheaper to keep true than a flag checked in five places.
     //
-    // See `antlia_rpc.h` and ADR 0013.
+    // See `antlia_rpc.h` and ADR 0014.
     const char* args = p;
     if(antlia_rpc_wanted(args)) {
         return antlia_rpc_run(args);

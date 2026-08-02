@@ -10,7 +10,7 @@
 // **Antlia used to refuse to write at all**, and the reason was good: "a tag
 // written by a device that cannot check the ID against the inventory is a tag
 // that might be a duplicate." That objection is about a Flipper acting alone. In
-// bridge mode (ADR 0013) the Flipper is a peripheral of a host that *is* talking
+// bridge mode (ADR 0014) the Flipper is a peripheral of a host that *is* talking
 // to the inventory, and which minted the short ID being written. The objection
 // does not apply, and the wedge mode it was written about still cannot write.
 //
